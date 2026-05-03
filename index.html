@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Python Hero</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 60%, #16213e 100%);
+    color: #e0e0ff;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    user-select: none;
+  }
+  h1 {
+    font-size: 2.4rem;
+    color: #fdd835;
+    text-shadow: 0 0 18px rgba(253, 216, 53, 0.45);
+    margin-bottom: 4px;
+    letter-spacing: 1px;
+  }
+  .subtitle { color: #9aa; margin-bottom: 14px; font-size: 0.9rem; }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; justify-content: center; }
+  .tab {
+    padding: 10px 18px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .tab:hover:not(.locked) { background: rgba(255,255,255,0.12); }
+  .tab.locked { opacity: 0.45; cursor: not-allowed; }
+  .tab.completed { border-color: #4caf50; color: #8bd28b; }
+  .tab.active { background: rgba(253,216,53,0.18); border-color: #fdd835; color: #fdd835; }
+
+  .hud {
+    display: flex; gap: 28px; margin-bottom: 10px; font-size: 1rem;
+  }
+  .hud-item { color: #9aa; }
+  .hud-item span { color: #fdd835; font-weight: bold; }
+
+  .game-wrapper {
+    position: relative;
+    width: 600px;
+    max-width: 96vw;
+    height: 540px;
+    border: 2px solid rgba(255,255,255,0.18);
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(0,0,0,0.45);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+  }
+
+  .play-area {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 480px;
+    display: flex;
+    overflow: hidden;
+  }
+  .lane {
+    flex: 1;
+    position: relative;
+    border-right: 1px solid rgba(255,255,255,0.07);
+  }
+  .lane:last-child { border-right: none; }
+  .lane[data-key="a"] { background: linear-gradient(180deg, rgba(33,150,243,0.04), rgba(33,150,243,0.16)); }
+  .lane[data-key="s"] { background: linear-gradient(180deg, rgba(76,175,80,0.04), rgba(76,175,80,0.16)); }
+  .lane[data-key="d"] { background: linear-gradient(180deg, rgba(156,39,176,0.04), rgba(156,39,176,0.18)); }
+  .lane[data-key="f"] { background: linear-gradient(180deg, rgba(255,152,0,0.04), rgba(255,152,0,0.16)); }
+  .lane.flash::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,0.12);
+    pointer-events: none;
+  }
+
+  .hit-line {
+    position: absolute;
+    left: 0; right: 0;
+    bottom: 60px;
+    height: 4px;
+    background: rgba(253, 216, 53, 0.85);
+    box-shadow: 0 0 14px rgba(253, 216, 53, 0.7);
+    z-index: 5;
+  }
+
+  .key-row {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 60px;
+    display: flex;
+    background: rgba(0,0,0,0.55);
+    border-top: 1px solid rgba(255,255,255,0.08);
+    z-index: 6;
+  }
+  .key-cell {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid rgba(255,255,255,0.07);
+    transition: background 0.08s;
+  }
+  .key-cell:last-child { border-right: none; }
+  .key-cell .k {
+    font-size: 1.4rem;
+    font-weight: bold;
+    color: #fdd835;
+    line-height: 1;
+  }
+  .key-cell .lbl { font-size: 0.8rem; color: #cdd; margin-top: 2px; }
+  .key-cell.flash { background: rgba(253,216,53,0.25); }
+
+  .tile {
+    position: absolute;
+    left: 6px; right: 6px;
+    height: 64px;
+    background: linear-gradient(135deg, #2c2c54, #40407a);
+    border: 1px solid rgba(255,255,255,0.22);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.45);
+    will-change: transform, opacity;
+    transform: translateY(-80px);
+  }
+  .tile .expr { font-size: 1rem; font-weight: bold; line-height: 1.1; padding: 0 4px; }
+  .tile .res { font-size: 0.78rem; color: #d8d8ff; margin-top: 3px; opacity: 0.85; }
+  .tile.hit {
+    background: linear-gradient(135deg, #66bb6a, #2e7d32);
+    border-color: #a5d6a7;
+    transition: opacity 0.18s, background 0.1s;
+    opacity: 0;
+  }
+  .tile.miss {
+    background: linear-gradient(135deg, #c62828, #6a1b1b);
+    border-color: #ef9a9a;
+    transition: opacity 0.2s;
+    opacity: 0;
+  }
+  .tile.saved {
+    background: linear-gradient(135deg, #4caf50, #1b5e20);
+    border-color: #a5d6a7;
+    transition: opacity 0.35s;
+    opacity: 0;
+  }
+
+  .overlay {
+    position: absolute; inset: 0;
+    background: rgba(8,8,16,0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    text-align: center;
+    padding: 30px;
+  }
+  .overlay h2 { color: #fdd835; font-size: 1.8rem; margin-bottom: 14px; }
+  .overlay p { color: #ccd; margin-bottom: 8px; max-width: 460px; line-height: 1.45; }
+  .overlay .small { color: #889; font-size: 0.85rem; }
+
+  .accuracy-big {
+    font-size: 4.2rem;
+    font-weight: bold;
+    margin: 6px 0 10px;
+    letter-spacing: 1px;
+  }
+  .acc-great { color: #66bb6a; }
+  .acc-good  { color: #fdd835; }
+  .acc-low   { color: #ef9a9a; }
+
+  .btn-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    background: #fdd835;
+    color: #1a1a2e;
+    border: none;
+    padding: 11px 22px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    font-weight: bold;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.15s;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(253,216,53,0.4); }
+  .btn.secondary { background: rgba(255,255,255,0.12); color: #fff; }
+  .btn.secondary:hover { box-shadow: 0 4px 14px rgba(255,255,255,0.15); }
+
+  .legend {
+    margin-top: 12px;
+    font-size: 0.85rem;
+    color: #aab;
+    display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+  }
+  .legend b { color: #fdd835; }
+  .swatch-a { color: #64b5f6; }
+  .swatch-s { color: #81c784; }
+  .swatch-d { color: #ce93d8; }
+  .swatch-f { color: #ffb74d; }
+
+  .countdown {
+    font-size: 5rem;
+    color: #fdd835;
+    text-shadow: 0 0 30px rgba(253,216,53,0.6);
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+  <h1>Python Hero</h1>
+  <div class="subtitle">Identify the data type as each expression falls — A / S / D / F</div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab" data-song="row">Row, Row, Row Your Boat</div>
+    <div class="tab locked" data-song="twinkle">Twinkle, Twinkle, Little Star</div>
+    <div class="tab locked" data-song="ode">Ode to Joy</div>
+  </div>
+
+  <div class="hud">
+    <div class="hud-item">Hits: <span id="hits">0</span> / <span id="total">0</span></div>
+    <div class="hud-item">Accuracy: <span id="acc">—</span></div>
+  </div>
+
+  <div class="game-wrapper" id="gameWrapper">
+    <div class="play-area" id="playArea">
+      <div class="lane" data-key="a"></div>
+      <div class="lane" data-key="s"></div>
+      <div class="lane" data-key="d"></div>
+      <div class="lane" data-key="f"></div>
+      <div class="hit-line"></div>
+    </div>
+    <div class="key-row">
+      <div class="key-cell" data-key="a"><div class="k">A</div><div class="lbl">int</div></div>
+      <div class="key-cell" data-key="s"><div class="k">S</div><div class="lbl">string</div></div>
+      <div class="key-cell" data-key="d"><div class="k">D</div><div class="lbl">float</div></div>
+      <div class="key-cell" data-key="f"><div class="k">F</div><div class="lbl">bool</div></div>
+    </div>
+
+    <div class="overlay" id="menu">
+      <h2 id="menuTitle">Ready to play</h2>
+      <p>Press <b>A</b> for <span class="swatch-a">int</span>, <b>S</b> for <span class="swatch-s">string</span>, <b>D</b> for <span class="swatch-d">float</span>, <b>F</b> for <span class="swatch-f">bool</span> as each tile crosses the yellow line.</p>
+      <p class="small">Heads up: a few sneaky tiles have an expression that <b>doesn't match</b> the lane — let those pass instead of pressing.</p>
+      <p class="small">No penalty for misses. Correct hits play the next note of the song.</p>
+      <div class="btn-row">
+        <button class="btn" id="startBtn">Start</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="results" style="display:none;">
+      <h2 id="resultTitle">Song Complete!</h2>
+      <div class="accuracy-big" id="resultAcc">100%</div>
+      <p id="resultDetail">35 / 35 hits</p>
+      <p class="small" id="resultSub"></p>
+      <div class="btn-row">
+        <button class="btn secondary" id="retryBtn">Retry</button>
+        <button class="btn" id="nextBtn">Next Song</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="countdown" style="display:none;">
+      <div class="countdown" id="countdownNum">3</div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><b>A</b> = <span class="swatch-a">int</span></span>
+    <span><b>S</b> = <span class="swatch-s">string</span></span>
+    <span><b>D</b> = <span class="swatch-d">float</span></span>
+    <span><b>F</b> = <span class="swatch-f">bool</span></span>
+  </div>
+
+<script>
+// ---------- AUDIO ----------
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+const NOTE_FREQ = {
+  C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00,
+  A4: 440.00, B4: 493.88, C5: 523.25, D5: 587.33, E5: 659.25
+};
+function playPitch(name, dur) {
+  if (!audioCtx) return;
+  const f = NOTE_FREQ[name]; if (!f) return;
+  const t = audioCtx.currentTime;
+  dur = dur || 0.42;
+  // Fundamental triangle
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'triangle';
+  o.frequency.value = f;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.26, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(t);
+  o.stop(t + dur + 0.05);
+  // Subtle bell-like 2nd harmonic
+  const o2 = audioCtx.createOscillator();
+  const g2 = audioCtx.createGain();
+  o2.type = 'sine';
+  o2.frequency.value = f * 2;
+  g2.gain.setValueAtTime(0, t);
+  g2.gain.linearRampToValueAtTime(0.07, t + 0.012);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o2.connect(g2).connect(audioCtx.destination);
+  o2.start(t);
+  o2.stop(t + dur + 0.05);
+}
+
+// ---------- EXPRESSION POOLS ----------
+// Each entry: [expression, result-string]. If expression == result, only the value shown on tile.
+const INTRO = {
+  int:    [['7','7'],['42','42'],['0','0'],['-3','-3'],['100','100'],['1','1'],['-7','-7'],['25','25']],
+  string: [['"hi"','"hi"'],['"py"','"py"'],['"7"','"7"'],['"abc"','"abc"'],['"X"','"X"'],['""','""'],['"Z"','"Z"']],
+  float:  [['3.14','3.14'],['2.5','2.5'],['0.0','0.0'],['1.5','1.5'],['-1.2','-1.2'],['9.99','9.99'],['7.0','7.0']],
+  bool:   [['True','True'],['False','False']]
+};
+const INTERMED = {
+  int:    INTRO.int.concat([
+    ['3 + 4','7'],['10 - 2','8'],['6 * 2','12'],['3 // 2','1'],
+    ['7 % 3','1'],['2 ** 3','8'],['8 + 5','13'],['9 // 4','2']
+  ]),
+  string: INTRO.string.concat([
+    ['"a" + "b"','"ab"'],['"py" * 2','"pypy"'],['"hi" + "!"','"hi!"'],
+    ['"x" * 3','"xxx"'],['"go" + "!"','"go!"']
+  ]),
+  float:  INTRO.float.concat([
+    ['3 / 2','1.5'],['1 / 4','0.25'],['3.0 + 1','4.0'],
+    ['5.0 - 2','3.0'],['1.5 * 2','3.0'],['10 / 4','2.5']
+  ]),
+  bool:   INTRO.bool.concat([
+    ['3 > 2','True'],['5 == 5','True'],['4 < 3','False'],
+    ['1 != 2','True'],['not True','False'],['7 >= 8','False']
+  ])
+};
+const ADV = {
+  int:    INTERMED.int.concat([
+    ['int("87")','87'],['int(3.14)','3'],['int("8" + "7")','87'],
+    ['int(True)','1'],['int(2.9)','2'],['int("12") + 3','15']
+  ]),
+  string: INTERMED.string.concat([
+    ['str(123)','"123"'],['str(True)','"True"'],['str(3.14)','"3.14"'],
+    ['str(7) + str(8)','"78"'],['str(1 + 2)','"3"']
+  ]),
+  float:  INTERMED.float.concat([
+    ['float("3.14")','3.14'],['float(7)','7.0'],['float("1.5")','1.5'],
+    ['float(True)','1.0'],['float("2") + 1','3.0']
+  ]),
+  bool:   INTERMED.bool.concat([
+    ['bool(0)','False'],['bool(1)','True'],['bool("")','False'],
+    ['bool("a")','True'],['bool([])','False']
+  ])
+};
+
+// ---------- SONGS ----------
+// Each song fixes which lane each pitch falls in. That keeps each key's sounds
+// limited to ~1-2 distinct notes per song, and groups expression types accordingly.
+const SONGS = {
+  row: {
+    name: "Row, Row, Row Your Boat",
+    pool: INTRO,
+    pitchLane: { 'C4':'a', 'E4':'s', 'F4':'d', 'G4':'d', 'D4':'f', 'C5':'f' },
+    notes: [
+      {t:0.0,  p:'C4'}, {t:0.8,  p:'C4'}, {t:1.6,  p:'C4'},
+      {t:2.4,  p:'D4'}, {t:3.2,  p:'E4'},
+      {t:4.4,  p:'E4'}, {t:5.2,  p:'D4'}, {t:6.0,  p:'E4'},
+      {t:6.8,  p:'F4'}, {t:7.6,  p:'G4'},
+      {t:9.0,  p:'C5'}, {t:9.6,  p:'C5'}, {t:10.2, p:'C5'},
+      {t:10.8, p:'G4'}, {t:11.4, p:'G4'}, {t:12.0, p:'G4'},
+      {t:12.6, p:'E4'}, {t:13.2, p:'E4'}, {t:13.8, p:'E4'},
+      {t:14.4, p:'C4'}, {t:15.0, p:'C4'}, {t:15.6, p:'C4'},
+      {t:16.6, p:'G4'}, {t:17.4, p:'F4'}, {t:18.2, p:'E4'},
+      {t:19.0, p:'D4'}, {t:19.9, p:'C4'}
+    ]
+  },
+  twinkle: {
+    name: "Twinkle, Twinkle, Little Star",
+    pool: INTERMED,
+    pitchLane: { 'C4':'a', 'D4':'a', 'E4':'s', 'F4':'d', 'G4':'f', 'A4':'f' },
+    notes: (function () {
+      const seq = [
+        'C4','C4','G4','G4','A4','A4','G4',     // Twinkle twinkle little star
+        'F4','F4','E4','E4','D4','D4','C4',     // How I wonder what you are
+        'G4','G4','F4','F4','E4','E4','D4',     // Up above the world so high
+        'G4','G4','F4','F4','E4','E4','D4',     // Like a diamond in the sky
+        'C4','C4','G4','G4','A4','A4','G4',     // Twinkle twinkle little star
+        'F4','F4','E4','E4','D4','D4','C4'      // How I wonder what you are
+      ];
+      const arr = []; let t = 0; const beat = 0.72;
+      for (let i = 0; i < seq.length; i++) {
+        arr.push({ t, p: seq[i] });
+        // line endings (every 7th note) get a longer hold
+        t += ((i + 1) % 7 === 0) ? beat * 1.6 : beat;
+      }
+      return arr;
+    })()
+  },
+  ode: {
+    name: "Ode to Joy",
+    pool: ADV,
+    pitchLane: { 'C4':'a', 'D4':'s', 'E4':'d', 'F4':'f', 'G4':'f' },
+    notes: (function () {
+      const seq = [
+        // Phrase 1
+        'E4','E4','F4','G4', 'G4','F4','E4','D4', 'C4','C4','D4','E4', 'E4','D4','D4','D4',
+        // Phrase 2
+        'E4','E4','F4','G4', 'G4','F4','E4','D4', 'C4','C4','D4','E4', 'D4','C4','C4','C4',
+        // Phrase 3 (bridge)
+        'D4','D4','E4','C4', 'D4','E4','F4','E4', 'C4','D4','E4','F4', 'E4','D4','C4','D4',
+        // Phrase 4
+        'E4','E4','F4','G4', 'G4','F4','E4','D4', 'C4','C4','D4','E4', 'D4','C4','C4','C4'
+      ];
+      const arr = []; let t = 0; const beat = 0.65;
+      for (let i = 0; i < seq.length; i++) {
+        arr.push({ t, p: seq[i] });
+        // small breath every 16 notes (end of phrase)
+        t += ((i + 1) % 16 === 0) ? beat * 1.6 : beat;
+      }
+      return arr;
+    })()
+  }
+};
+
+// ---------- CONFIG ----------
+const TYPE_TO_LANE = { int: 'a', string: 's', float: 'd', bool: 'f' };
+const TYPES = ['int','string','float','bool'];
+const SONG_ORDER = ['row','twinkle','ode'];
+
+const PLAY_HEIGHT = 480;
+const TILE_HEIGHT = 64;
+const FALL_DUR = 2.0;     // seconds for tile to travel from spawn to hit line
+const HIT_TOL  = 0.22;    // ± seconds for a successful hit
+const LEAD_IN  = 1.2;     // seconds of pre-roll before song clock t=0
+
+// ---------- STATE ----------
+const state = {
+  songKey: 'row',
+  unlocked: { row: true, twinkle: false, ode: false },
+  completed: { row: false, twinkle: false, ode: false },
+  bestAcc: { row: 0, twinkle: 0, ode: 0 },
+  playing: false,
+  startTime: 0,
+  tiles: [],
+  hits: 0,
+  total: 0,
+  rafId: null
+};
+
+// ---------- DOM ----------
+const lanesEls = {
+  a: document.querySelector('.lane[data-key="a"]'),
+  s: document.querySelector('.lane[data-key="s"]'),
+  d: document.querySelector('.lane[data-key="d"]'),
+  f: document.querySelector('.lane[data-key="f"]')
+};
+const keyCells = {
+  a: document.querySelector('.key-cell[data-key="a"]'),
+  s: document.querySelector('.key-cell[data-key="s"]'),
+  d: document.querySelector('.key-cell[data-key="d"]'),
+  f: document.querySelector('.key-cell[data-key="f"]')
+};
+const hitsEl = document.getElementById('hits');
+const totalEl = document.getElementById('total');
+const accEl = document.getElementById('acc');
+const tabsEl = document.getElementById('tabs');
+const menuEl = document.getElementById('menu');
+const resultsEl = document.getElementById('results');
+const countdownEl = document.getElementById('countdown');
+const countdownNum = document.getElementById('countdownNum');
+
+// ---------- HELPERS ----------
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+const LANE_TO_TYPE = { a: 'int', s: 'string', d: 'float', f: 'bool' };
+// Fraction of tiles that are "traps" — expression type does NOT match the lane.
+// Player should let trap tiles pass without pressing the lane key.
+const TRAP_RATES = { row: 0.08, twinkle: 0.10, ode: 0.13 };
+
+function buildTilesForSong(songKey) {
+  const song = SONGS[songKey];
+  const trapRate = TRAP_RATES[songKey] || 0.10;
+  return song.notes.map(n => {
+    const lane = song.pitchLane[n.p];
+    const correctType = LANE_TO_TYPE[lane];
+    const isTrap = Math.random() < trapRate;
+    let type;
+    if (isTrap) {
+      const others = TYPES.filter(t => t !== correctType);
+      type = pickRandom(others);
+    } else {
+      type = correctType;
+    }
+    const item = pickRandom(song.pool[type]);
+    return {
+      time: n.t,
+      pitch: n.p,
+      lane,
+      type,
+      expr: item[0],
+      result: item[1],
+      isTrap,
+      el: null,
+      spawned: false,
+      hit: false,
+      missed: false
+    };
+  });
+}
+
+function tileTopAtTime(noteTime, currentT) {
+  // tile spawns at currentT = noteTime - FALL_DUR with top y = -TILE_HEIGHT
+  // tile reaches hit line at currentT = noteTime with top y = PLAY_HEIGHT - TILE_HEIGHT (bottom touching hit line)
+  const startY = -TILE_HEIGHT;
+  const endY = PLAY_HEIGHT - TILE_HEIGHT;
+  const progress = (currentT - (noteTime - FALL_DUR)) / FALL_DUR;
+  return startY + (endY - startY) * progress;
+}
+
+function createTileEl(tile) {
+  const el = document.createElement('div');
+  el.className = 'tile';
+  const showResult = tile.expr !== tile.result;
+  el.innerHTML = showResult
+    ? '<div class="expr">' + escapeHtml(tile.expr) + '</div><div class="res">= ' + escapeHtml(tile.result) + '</div>'
+    : '<div class="expr">' + escapeHtml(tile.expr) + '</div>';
+  lanesEls[tile.lane].appendChild(el);
+  return el;
+}
+
+// ---------- LOOP ----------
+function loop() {
+  if (!state.playing) return;
+  const now = (performance.now() / 1000) - state.startTime;
+
+  for (const tile of state.tiles) {
+    if (!tile.spawned && now >= tile.time - FALL_DUR) {
+      tile.spawned = true;
+      tile.el = createTileEl(tile);
+    }
+    if (tile.spawned && !tile.hit && !tile.missed) {
+      const y = tileTopAtTime(tile.time, now);
+      tile.el.style.transform = 'translateY(' + y.toFixed(1) + 'px)';
+      if (now > tile.time + HIT_TOL) {
+        const el = tile.el;
+        if (tile.isTrap) {
+          // Player correctly let the trap pass — counts as a correct decision
+          tile.hit = true;
+          state.hits++;
+          el.classList.add('saved');
+          setTimeout(function () { if (el && el.parentNode) el.parentNode.removeChild(el); }, 320);
+        } else {
+          tile.missed = true;
+          el.classList.add('miss');
+          setTimeout(function () { if (el && el.parentNode) el.parentNode.removeChild(el); }, 220);
+        }
+      }
+    }
+  }
+
+  updateHud();
+
+  const lastTime = state.tiles.length > 0 ? state.tiles[state.tiles.length - 1].time : 0;
+  if (now > lastTime + 1.6) {
+    endSong();
+    return;
+  }
+  state.rafId = requestAnimationFrame(loop);
+}
+
+// ---------- HIT ----------
+function tryHit(key) {
+  if (!state.playing) return;
+  const now = (performance.now() / 1000) - state.startTime;
+  let candidate = null, bestDelta = HIT_TOL + 1;
+  for (const tile of state.tiles) {
+    if (tile.hit || tile.missed) continue;
+    if (tile.lane !== key) continue;
+    const delta = Math.abs(now - tile.time);
+    if (delta <= HIT_TOL && delta < bestDelta) {
+      candidate = tile; bestDelta = delta;
+    }
+  }
+  flashKey(key);
+  if (!candidate) return;
+
+  const el = candidate.el;
+  if (candidate.isTrap) {
+    // Player pressed the lane key on a trap — wrong. No sound, no point.
+    candidate.missed = true;
+    el.classList.add('miss');
+    setTimeout(function () { if (el && el.parentNode) el.parentNode.removeChild(el); }, 220);
+  } else {
+    candidate.hit = true;
+    el.classList.add('hit');
+    setTimeout(function () { if (el && el.parentNode) el.parentNode.removeChild(el); }, 200);
+    playPitch(candidate.pitch);
+    state.hits++;
+  }
+}
+
+function flashKey(key) {
+  const cell = keyCells[key];
+  cell.classList.add('flash');
+  setTimeout(function () { cell.classList.remove('flash'); }, 100);
+  const lane = lanesEls[key];
+  lane.classList.add('flash');
+  setTimeout(function () { lane.classList.remove('flash'); }, 100);
+}
+
+// ---------- HUD ----------
+function updateHud() {
+  hitsEl.textContent = state.hits;
+  totalEl.textContent = state.total;
+  let settled = 0;
+  for (const t of state.tiles) if (t.hit || t.missed) settled++;
+  if (settled === 0) accEl.textContent = '—';
+  else accEl.textContent = Math.round((state.hits / settled) * 100) + '%';
+}
+
+// ---------- START / END ----------
+function startSong(key) {
+  state.songKey = key;
+  state.tiles = buildTilesForSong(key);
+  state.total = state.tiles.length;
+  state.hits = 0;
+  // Clear any stray tiles
+  for (const k in lanesEls) {
+    const lane = lanesEls[k];
+    const tiles = lane.querySelectorAll('.tile');
+    tiles.forEach(function (n) { n.remove(); });
+  }
+  updateHud();
+  menuEl.style.display = 'none';
+  resultsEl.style.display = 'none';
+  initAudio();
+
+  // Brief 3-2-1 countdown
+  countdownEl.style.display = 'flex';
+  let count = 3;
+  countdownNum.textContent = String(count);
+  const tick = function () {
+    count--;
+    if (count > 0) {
+      countdownNum.textContent = String(count);
+      setTimeout(tick, 700);
+    } else if (count === 0) {
+      countdownNum.textContent = 'GO!';
+      setTimeout(function () {
+        countdownEl.style.display = 'none';
+        state.startTime = (performance.now() / 1000) + LEAD_IN;
+        state.playing = true;
+        state.rafId = requestAnimationFrame(loop);
+      }, 500);
+    }
+  };
+  setTimeout(tick, 700);
+}
+
+function endSong() {
+  state.playing = false;
+  if (state.rafId) cancelAnimationFrame(state.rafId);
+  // Clear lanes
+  for (const k in lanesEls) {
+    const lane = lanesEls[k];
+    const tiles = lane.querySelectorAll('.tile');
+    tiles.forEach(function (n) { n.remove(); });
+  }
+
+  state.completed[state.songKey] = true;
+  const acc = state.total === 0 ? 0 : Math.round((state.hits / state.total) * 100);
+  if (acc > state.bestAcc[state.songKey]) state.bestAcc[state.songKey] = acc;
+
+  const idx = SONG_ORDER.indexOf(state.songKey);
+  if (idx >= 0 && idx + 1 < SONG_ORDER.length) {
+    state.unlocked[SONG_ORDER[idx + 1]] = true;
+  }
+  refreshTabs();
+
+  // Render results
+  const accEl = document.getElementById('resultAcc');
+  accEl.textContent = acc + '%';
+  accEl.className = 'accuracy-big ' + (acc >= 85 ? 'acc-great' : acc >= 60 ? 'acc-good' : 'acc-low');
+  document.getElementById('resultDetail').textContent = state.hits + ' / ' + state.total + ' hits';
+  let title = "Song Complete!";
+  let sub = "";
+  if (acc === 100) { title = "Perfect run!"; sub = "Every expression nailed."; }
+  else if (acc >= 85) { title = "Great work!"; sub = "Solid grasp of the data types."; }
+  else if (acc >= 60) { title = "Nice — keep going."; sub = "Room to sharpen up on the trickier ones."; }
+  else { title = "Song complete."; sub = "Try again — you'll get more this round."; }
+  document.getElementById('resultTitle').textContent = title;
+  document.getElementById('resultSub').textContent = sub;
+
+  const nextBtn = document.getElementById('nextBtn');
+  if (idx + 1 < SONG_ORDER.length) {
+    nextBtn.style.display = 'inline-block';
+    nextBtn.textContent = 'Next: ' + SONGS[SONG_ORDER[idx + 1]].name;
+  } else {
+    nextBtn.style.display = 'none';
+  }
+  resultsEl.style.display = 'flex';
+}
+
+// ---------- TABS / MENU ----------
+function refreshTabs() {
+  tabsEl.querySelectorAll('.tab').forEach(function (tab) {
+    const k = tab.getAttribute('data-song');
+    const unlocked = state.unlocked[k];
+    const completed = state.completed[k];
+    tab.classList.toggle('locked', !unlocked);
+    tab.classList.toggle('completed', !!completed);
+    tab.classList.toggle('active', state.songKey === k);
+    let prefix = unlocked ? (completed ? '✓ ' : '') : '🔒 ';
+    let suffix = (completed && state.bestAcc[k] > 0) ? '  (' + state.bestAcc[k] + '%)' : '';
+    tab.textContent = prefix + SONGS[k].name + suffix;
+  });
+}
+
+function showMenu() {
+  document.getElementById('menuTitle').textContent = 'Ready: ' + SONGS[state.songKey].name;
+  menuEl.style.display = 'flex';
+  resultsEl.style.display = 'none';
+  countdownEl.style.display = 'none';
+}
+
+tabsEl.querySelectorAll('.tab').forEach(function (tab) {
+  tab.addEventListener('click', function () {
+    const k = tab.getAttribute('data-song');
+    if (!state.unlocked[k]) return;
+    if (state.playing) return;
+    state.songKey = k;
+    refreshTabs();
+    showMenu();
+  });
+});
+
+document.getElementById('startBtn').addEventListener('click', function () {
+  startSong(state.songKey);
+});
+document.getElementById('retryBtn').addEventListener('click', function () {
+  startSong(state.songKey);
+});
+document.getElementById('nextBtn').addEventListener('click', function () {
+  const idx = SONG_ORDER.indexOf(state.songKey);
+  if (idx + 1 < SONG_ORDER.length) {
+    state.songKey = SONG_ORDER[idx + 1];
+    refreshTabs();
+    showMenu();
+  }
+});
+
+// ---------- KEYBOARD ----------
+document.addEventListener('keydown', function (e) {
+  if (e.repeat) return;
+  const k = e.key.toLowerCase();
+  if (k === 'a' || k === 's' || k === 'd' || k === 'f') {
+    initAudio();
+    if (state.playing) tryHit(k);
+    e.preventDefault();
+  }
+});
+
+// init
+refreshTabs();
+showMenu();
+</script>
+</body>
+</html>
